@@ -1,0 +1,11 @@
+{
+  "fixture_version": 1,
+  "synthetic": true,
+  "id": "00000000-0000-4000-8000-000000000001",
+  "display_id": "SF-2026-000001",
+  "title": "Synthetic investigation fixture",
+  "status": "new",
+  "disposition": null,
+  "alert_ids": ["synthetic-alert-0001"],
+  "created_at": "2026-01-01T12:00:00Z"
+}

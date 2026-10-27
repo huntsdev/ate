@@ -1,0 +1,142 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ATÉ",
+    "version": "0.0.1"
+  },
+  "paths": {
+    "/api/v1/health/live": {
+      "get": {
+        "summary": "Live",
+        "operationId": "live_api_v1_health_live_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "summary": "Live",
+        "operationId": "live_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health/ready": {
+      "get": {
+        "summary": "Ready",
+        "operationId": "ready_api_v1_health_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "alive",
+            "title": "Status",
+            "default": "alive"
+          },
+          "service": {
+            "type": "string",
+            "const": "ate",
+            "title": "Service",
+            "default": "ate"
+          },
+          "phase": {
+            "type": "integer",
+            "const": 0,
+            "title": "Phase",
+            "default": 0
+          },
+          "optional_dependencies": {
+            "additionalProperties": {
+              "type": "string",
+              "const": "not_enabled"
+            },
+            "type": "object",
+            "title": "Optional Dependencies",
+            "default": {
+              "elastic": "not_enabled",
+              "ollama": "not_enabled"
+            }
+          }
+        },
+        "type": "object",
+        "title": "Health"
+      },
+      "Readiness": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "not_ready"
+            ],
+            "title": "Status"
+          },
+          "dependencies": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "healthy",
+                "unavailable"
+              ]
+            },
+            "type": "object",
+            "title": "Dependencies"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "dependencies"
+        ],
+        "title": "Readiness"
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "fixture_version": 1,
+  "synthetic": true,
+  "provider": "synthetic",
+  "provider_scope": "phase-0",
+  "external_alert_id": "synthetic-alert-0001",
+  "observed_at": "2026-01-01T12:00:00Z",
+  "title": "Synthetic PowerShell activity",
+  "severity": "medium",
+  "host": "lab-workstation.example.invalid",
+  "summary": "Deterministic development fixture. No command is included or executed."
+}

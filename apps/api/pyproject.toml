@@ -1,0 +1,41 @@
+[project]
+name = "ate-backend"
+version = "0.0.1"
+description = "ATÉ modular monolith foundation"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.34,<1",
+  "pydantic-settings>=2.7,<3",
+  "sqlalchemy[asyncio]>=2.0,<2.1",
+  "psycopg[binary]>=3.2,<4",
+  "alembic>=1.14,<2",
+  "redis>=5.2,<7",
+  "celery[redis]>=5.5,<6",
+]
+
+[dependency-groups]
+dev = ["httpx>=0.28,<1", "pytest>=8.3,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.11,<1", "pyyaml>=6,<7", "mypy>=1.15,<2", "jsonschema>=4.23,<5", "types-PyYAML>=6,<7"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = [".", "../worker"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+python_version = "3.12"
+files = ["sentinelforge", "../worker"]
+check_untyped_defs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true

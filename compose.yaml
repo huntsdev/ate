@@ -1,0 +1,173 @@
+name: ate
+
+x-backend: &backend
+  image: ate-backend:phase0
+  build:
+    context: .
+    dockerfile: apps/api/Dockerfile
+  environment: &backend-env
+    ATE_POSTGRES_PASSWORD: ${ATE_POSTGRES_PASSWORD:?Copy .env.example to .env and set a password}
+    ATE_POSTGRES_USER: ${ATE_POSTGRES_USER:-ate}
+    ATE_POSTGRES_DB: ${ATE_POSTGRES_DB:-ate}
+    ATE_POSTGRES_HOST: ${ATE_POSTGRES_HOST:-postgres}
+    ATE_POSTGRES_PORT: ${ATE_POSTGRES_PORT:-5432}
+    ATE_REDIS_URL: ${ATE_REDIS_URL:-redis://redis:6379/0}
+    ATE_READINESS_TIMEOUT_SECONDS: ${ATE_READINESS_TIMEOUT_SECONDS:-2}
+    ATE_OLLAMA_URL: ${ATE_OLLAMA_URL:-http://host.docker.internal:11434}
+    ATE_OLLAMA_MODEL: ${ATE_OLLAMA_MODEL:-qwen3:8b}
+    ATE_ELASTIC_URL: ${ATE_ELASTIC_URL:-http://elasticsearch:9200}
+  networks: [backend]
+  restart: "no"
+  init: true
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: [no-new-privileges:true]
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg17-trixie@sha256:7a7e9f22015b67edb4bef5c59daeebcd7e74bfa570df6ce60ae01237c8648a84
+    environment:
+      POSTGRES_USER: ${ATE_POSTGRES_USER:-ate}
+      POSTGRES_DB: ${ATE_POSTGRES_DB:-ate}
+      POSTGRES_PASSWORD: ${ATE_POSTGRES_PASSWORD:?Set a local PostgreSQL password}
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    networks: [backend]
+    mem_limit: 1g
+    cpus: 2
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+
+  redis:
+    image: redis:8-alpine@sha256:47b08295737773de3b711fb86f13ae802f5074e96a9a2d29f5f80164ac08c046
+    command: [redis-server, --appendonly, "yes", --appendfsync, everysec, --maxmemory, 128mb, --maxmemory-policy, noeviction]
+    volumes: [redis_data:/data]
+    networks: [backend]
+    mem_limit: 256m
+    cpus: 1
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+
+  migrate:
+    <<: *backend
+    command: [python, -m, alembic, upgrade, head]
+    depends_on:
+      postgres: { condition: service_healthy }
+    mem_limit: 256m
+    cpus: 1
+
+  api:
+    <<: *backend
+    networks: [backend, frontend]
+    ports: ["127.0.0.1:${ATE_API_PORT:-8000}:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 12
+      start_period: 10s
+    mem_limit: 512m
+    cpus: 1
+
+  worker:
+    <<: *backend
+    networks: [backend, providers]
+    command: [python, -m, celery, -A, worker:celery_app, worker, --loglevel=INFO, --concurrency=1, --hostname=ate-worker@%h]
+    depends_on:
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: [CMD-SHELL, 'python -m celery -A worker:celery_app inspect ping --destination "ate-worker@$${HOSTNAME}" --timeout 3 --json | grep -q pong']
+      interval: 20s
+      timeout: 8s
+      retries: 6
+      start_period: 20s
+    mem_limit: 512m
+    cpus: 1
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: production
+    ports: ["127.0.0.1:${ATE_WEB_PORT:-8080}:8080"]
+    depends_on:
+      api: { condition: service_started }
+    networks: [frontend]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, wget, --quiet, --spider, http://127.0.0.1:8080/]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    mem_limit: 128m
+    cpus: 1
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+    profiles: [elastic]
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms1g -Xmx1g
+    volumes: [elastic_data:/usr/share/elasticsearch/data]
+    networks: [providers]
+    ports: ["127.0.0.1:9200:9200"]
+    mem_limit: 2g
+    cpus: 2
+    healthcheck:
+      test: [CMD-SHELL, 'curl --fail --silent "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=3s" >/dev/null']
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 45s
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:9.5.5
+    profiles: [elastic]
+    environment:
+      ELASTICSEARCH_HOSTS: '["http://elasticsearch:9200"]'
+      XPACK_SECURITY_ENABLED: "false"
+      NODE_OPTIONS: --max-old-space-size=768
+    depends_on:
+      elasticsearch: { condition: service_healthy }
+    networks: [providers]
+    ports: ["127.0.0.1:5601:5601"]
+    mem_limit: 1g
+    cpus: 1
+    healthcheck:
+      test: [CMD-SHELL, 'curl --fail --silent http://localhost:5601/api/status >/dev/null']
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+
+networks:
+  backend: { internal: true }
+  frontend: {}
+  providers: {}
+
+volumes:
+  postgres_data:
+  redis_data:
+  elastic_data:
