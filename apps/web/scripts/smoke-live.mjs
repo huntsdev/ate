@@ -17,7 +17,9 @@ try {
   const readyResponse = page.waitForResponse(
     (response) => new URL(response.url()).pathname === '/api/v1/health/ready',
   )
-  await page.goto(process.env.ATE_WEB_URL ?? 'http://127.0.0.1:8080')
+  await page.goto(
+    `${process.env.ATE_WEB_URL ?? 'http://127.0.0.1:8080'}/system`,
+  )
   const health = await healthResponse
   const readiness = await readyResponse
   assert.equal(health.status(), 200)
@@ -33,7 +35,9 @@ try {
     1,
   )
   await page.screenshot({
-    path: fileURLToPath(new URL('foundation-desktop.png', artifactDirectory)),
+    path: fileURLToPath(
+      new URL('phase2-system-desktop.png', artifactDirectory),
+    ),
     fullPage: true,
   })
   await page.setViewportSize({ width: 390, height: 844 })
@@ -43,7 +47,7 @@ try {
     ),
   )
   await page.screenshot({
-    path: fileURLToPath(new URL('foundation-mobile.png', artifactDirectory)),
+    path: fileURLToPath(new URL('phase2-system-mobile.png', artifactDirectory)),
     fullPage: true,
   })
   console.log(

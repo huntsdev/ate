@@ -1,16 +1,16 @@
-import logging
-import time
+import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from uuid import uuid4
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
-from starlette.middleware.base import RequestResponseEndpoint
 
+from sentinelforge.api.boundary import LocalBoundary
+from sentinelforge.api.problems import install_problem_handlers
+from sentinelforge.api.routes import router
 from sentinelforge.core.config import Settings, get_settings
-from sentinelforge.core.database import create_engine
+from sentinelforge.core.database import create_engine, session_factory
 from sentinelforge.core.health import Health, Readiness, ReadinessChecker, dependency_probes
 from sentinelforge.core.logging import configure_logging
 
@@ -23,17 +23,14 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        if checker is not None:
-            app.state.checker = checker
-            yield
-            return
         engine = create_engine(settings)
+        app.state.sessions = session_factory(engine)
         redis = Redis.from_url(
             str(settings.redis_url),
             socket_connect_timeout=settings.readiness_timeout_seconds,
             socket_timeout=settings.readiness_timeout_seconds,
         )
-        app.state.checker = ReadinessChecker(
+        app.state.checker = checker or ReadinessChecker(
             dependency_probes(engine, redis), settings.readiness_timeout_seconds
         )
         try:
@@ -44,28 +41,10 @@ def create_app(
 
     app = FastAPI(title="ATÉ", version="0.0.1", lifespan=lifespan)
 
-    @app.middleware("http")
-    async def request_logging(request: Request, call_next: RequestResponseEndpoint) -> Response:
-        correlation_id = str(uuid4())
-        started = time.monotonic()
-        try:
-            response = await call_next(request)
-        except Exception:
-            logging.getLogger("ate").error(
-                "request_failed", extra={"correlation_id": correlation_id, "status_code": 500}
-            )
-            response = JSONResponse(status_code=500, content={"detail": "Internal server error"})
-        response.headers["X-Correlation-ID"] = correlation_id
-        response.headers["Cache-Control"] = "no-store"
-        logging.getLogger("ate").info(
-            "request_complete",
-            extra={
-                "correlation_id": correlation_id,
-                "status_code": response.status_code,
-                "duration_ms": round((time.monotonic() - started) * 1000, 2),
-            },
-        )
-        return response
+    app.state.csrf_token = secrets.token_urlsafe(32)
+    app.add_middleware(LocalBoundary, settings=settings, csrf_token=app.state.csrf_token)
+    install_problem_handlers(app)
+    app.include_router(router)
 
     @app.get("/api/v1/health", response_model=Health)
     @app.get("/api/v1/health/live", response_model=Health)

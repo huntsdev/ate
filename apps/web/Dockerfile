@@ -1,10 +1,10 @@
 FROM node:26-alpine@sha256:40cd011b55415bc894e45b02fdd5a5dfde056921b7d23a64c74f80497af48797 AS dev
 WORKDIR /app
-COPY apps/web/package.json apps/web/package-lock.json ./
-RUN npm ci
-COPY apps/web ./
-RUN chown -R node:node /app
+RUN chown node:node /app
 USER node
+COPY --chown=node:node apps/web/package.json apps/web/package-lock.json ./
+RUN npm ci
+COPY --chown=node:node apps/web ./
 EXPOSE 8080
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "8080"]
 

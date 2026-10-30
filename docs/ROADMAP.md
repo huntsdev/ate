@@ -1,6 +1,7 @@
 # SentinelForge — Engineering Development Roadmap
 
-**Status:** Proposed implementation plan  
+**Status:** Phase 2 implemented and locally validated on 2026-10-28; Phase 3 remains planned
+
 **Planning model:** Dependency- and acceptance-driven (not date-driven)  
 **Intended audience:** Codex and engineers implementing the platform  
 **Architecture reference:** [`ARCHITECTURE.md`](./ARCHITECTURE.md)
@@ -79,25 +80,28 @@ Work on security controls, API documentation, and tests continuously rather than
 - [x] Create `.env.example` with safe placeholders and document secret-loading, host ports, and WSL2 prerequisites.
 - [x] Add health and readiness checks. Readiness must distinguish core app availability from optional Elastic/Ollama availability.
 - [x] Set up Python quality tooling (formatter, linter, type checker, pytest) and frontend lint/typecheck/test runner.
-- [x] Add CI running formatting, type checks, unit tests and build checks; don't require Ollama or real Elastic in CI. Workflow is defined; hosted execution is not yet verified.
+- [x] Add CI running formatting, type checks, unit tests and build checks; don't require Ollama or real Elastic in CI. Hosted API, web, and infrastructure jobs passed for baseline commit `00c7bf2`.
 - [x] Generate OpenAPI from FastAPI and establish frontend contract validation/type generation approach.
 - [x] Add seeded **synthetic** security alerts and case fixtures. Static deterministic files only; database seeding awaits Phase 1 tables.
 - [x] Create `docs/RUNBOOK.md`: prerequisites, start/stop, reset demo data, logs, troubleshooting, and backup warning.
 
 ### Exit criteria
 
-- [ ] A fresh clone starts with documented commands and no production credentials.
+- [x] A fresh clone starts with documented commands and no production credentials. Verified against `00c7bf2` in an isolated Compose project with new volumes and synthetic credentials.
 - [x] `GET /api/v1/health` succeeds and a frontend page loads API data. Verified through the Docker API/Nginx stack with a real browser.
 - [x] PostgreSQL can accept a migration and retains data through `docker compose down`/`up`. Verified with an isolated synthetic database and post-restart worker smoke.
-- [ ] CI passes with no GPU, Ollama, Elastic, Windows VM, or R620 dependency.
+- [x] CI passes with no GPU, Ollama, Elastic, Windows VM, or R620 dependency. [Baseline hosted run](https://github.com/huntsdev/ate/actions/runs/40444887595) passed all three jobs.
 - [x] Stopping the stack does not remove named data volumes; destructive reset is a separate explicit command. Verified by the core persistence check without volume deletion.
 
 **Implementation caution:** Do not implement LLM orchestration, attack execution, or enterprise auth in Phase 0.
 
 Implementation and actual check results: [PHASE_0_STATUS.md](PHASE_0_STATUS.md).
-Phase 0 is not declared complete until the Docker/CI exit criteria are verified.
+Phase 0 baseline Docker/CI exit criteria are verified. The optional-configuration
+follow-up has local source/runtime validation; it has not been pushed or run in
+hosted CI. The user subsequently authorized Phase 1; its results are below.
 Decisions: [ADR 0001](ADR/0001-phase-0-foundation.md),
-[ADR 0002](ADR/0002-frontend-foundation.md). Later phases remain unimplemented.
+[ADR 0002](ADR/0002-frontend-foundation.md),
+[ADR 0003](ADR/0003-optional-provider-configuration.md). Phase 3 and later remain unimplemented.
 
 ---
 
@@ -107,24 +111,30 @@ Decisions: [ADR 0001](ADR/0001-phase-0-foundation.md),
 
 ### Engineering tasks
 
-- [ ] Define enums and validation for case status (`new`, `triaging`, `investigating`, `resolved`, `closed`) and disposition (`true_positive`, `benign_positive`, `false_positive`, `inconclusive`).
-- [ ] Implement SQLAlchemy models and Alembic migrations for `cases`, `alerts`, `case_alerts`, `evidence`, `case_notes`, `case_events`, and initial `users`/service actors.
-- [ ] Add UUID primary keys; use immutable human-facing case IDs such as `SF-2026-000142`.
-- [ ] Add source uniqueness: provider + provider scope + external alert ID.
-- [ ] Implement many-to-many alert↔case links, explicit source references, evidence timestamps, and optional bounded evidence snapshots.
-- [ ] Enforce case transition rules; separate case disposition from AI-generated recommendations.
-- [ ] Add an append-only audit mechanism for status changes, assignments, note edits, linking/unlinking evidence, and case closure/reopening.
-- [ ] Implement optimistic locking or equivalent conflict detection for concurrent edits.
-- [ ] Add service/repository tests, transaction rollback checks, and migration upgrade/downgrade tests (where safe).
-- [ ] Draft `docs/DATA-MODEL.md` with ERD and invariants.
+- [x] Define enums and validation for case status (`new`, `triaging`, `investigating`, `resolved`, `closed`) and disposition (`true_positive`, `benign_positive`, `false_positive`, `inconclusive`).
+- [x] Implement SQLAlchemy models and Alembic migrations for `cases`, `alerts`, `case_alerts`, `evidence`, `case_notes`, `case_events`, and initial `users`/service actors.
+- [x] Add UUID primary keys; use immutable human-facing case IDs such as `SF-2026-000142`.
+- [x] Add source uniqueness: provider + provider scope + external alert ID.
+- [x] Implement many-to-many alert↔case links, explicit source references, evidence timestamps, and optional bounded evidence snapshots.
+- [x] Enforce case transition rules; separate case disposition from AI-generated recommendations.
+- [x] Add an append-only audit mechanism for status changes, assignments, note edits, linking/unlinking evidence, and case closure/reopening.
+- [x] Implement optimistic locking or equivalent conflict detection for concurrent edits.
+- [x] Add service/repository tests, transaction rollback checks, and migration upgrade/downgrade tests (where safe).
+- [x] Draft `docs/DATA-MODEL.md` with ERD and invariants.
 
 ### Exit criteria
 
-- [ ] Duplicate external alerts are not stored twice.
-- [ ] Invalid case transitions and invalid dispositions are rejected consistently.
-- [ ] Audit records show **who**, **what**, and **when** for relevant changes.
-- [ ] Cases, notes, links, and evidence survive restart.
-- [ ] Migration from an empty database works automatically or through a documented command.
+- [x] Duplicate external alerts are not stored twice. Verified with concurrent source replay and scope/provider isolation on PostgreSQL.
+- [x] Invalid case transitions and invalid dispositions are rejected consistently. Verified pure rules, typed schemas, database constraints and service rollback.
+- [x] Audit records show **who**, **what**, and **when** for relevant changes. Actor snapshots, reasons, before/after state, correlation IDs and version order are retained; mutation attempts are rejected.
+- [x] Cases, notes, links, and evidence survive restart. Verified complete synthetic graph and all nine audit events across Compose down/up.
+- [x] Migration from an empty database works automatically or through a documented command. Verified empty upgrade/downgrade/re-upgrade and the existing Phase 0 deployment upgrade.
+
+Decisions: [ADR 0004](ADR/0004-phase-1-domain-persistence.md).
+Schema and internal service boundary: [DATA-MODEL.md](DATA-MODEL.md).
+Observed validation: [PHASE_1_STATUS.md](PHASE_1_STATUS.md).
+No new hosted CI pass is claimed for these uncommitted changes. Phase 2 has since
+added the case APIs and browser workflows described below.
 
 **Avoid:** Putting full raw Elastic event streams into PostgreSQL; store metadata and curated snapshots with source links.
 
@@ -136,24 +146,24 @@ Decisions: [ADR 0001](ADR/0001-phase-0-foundation.md),
 
 ### Backend work
 
-- [ ] CRUD/list/search endpoints for cases with pagination, sorting, filters, and robust validation.
-- [ ] Alert browsing and detail endpoints; link/unlink alerts to cases with recorded reasons.
-- [ ] Notes and evidence timeline endpoints with chronological provenance.
-- [ ] Case lifecycle actions: assign, begin triage, investigate, resolve with disposition, close, reopen.
-- [ ] Consistent problem/error schema and request correlation IDs.
-- [ ] Add initial local development authentication (or explicitly constrain app to loopback single-user mode); formal RBAC becomes mandatory before LAN/multiuser use.
+- [x] Create/read/update/list/search endpoints for cases with pagination, sorting, filters, and robust validation. Closing/reopening retains history; there is no destructive case delete route.
+- [x] Alert browsing and detail endpoints; link/unlink alerts to cases with recorded reasons.
+- [x] Notes and evidence timeline endpoints with chronological provenance.
+- [x] Case lifecycle actions: assign, begin triage, investigate, resolve with disposition, close, reopen.
+- [x] Consistent problem/error schema and request correlation IDs.
+- [x] Explicit loopback single-user mode with server-owned local actor, restricted Host/Origin and write token checks. Formal authentication/RBAC remains mandatory before LAN/multiuser use.
 
 ### Frontend work
 
-- [ ] Responsive application shell, navigation, loading/error/empty states.
-- [ ] SOC dashboard: open cases, severity mix, recently changed cases; source is app DB.
-- [ ] Alert queue: search, filter, open details, associate to case.
-- [ ] Case list: status, severity, owner, source, last activity.
-- [ ] Case workspace: summary, linked alerts, evidence timeline, notes, audit history, assignment, disposition.
-- [ ] Distinct visual display of human disposition versus system/AI suggestions (AI not yet implemented).
-- [ ] Test accessibility basics: keyboard operation, semantic labels, contrast, focus visibility.
+- [x] Responsive application shell, navigation, loading/error/empty states. Complete enterprise-style graphite/mint redesign with shadcn components and a custom brand mark.
+- [x] SOC dashboard: open cases, severity mix, recently changed cases; source is app DB.
+- [x] Alert queue: search, filter, open details, associate to case.
+- [x] Case list: status, severity, owner, source, last activity.
+- [x] Case workspace: summary, linked alerts, evidence timeline, notes, audit history, assignment, disposition.
+- [x] Distinct visual display of analyst disposition; AI assistance explicitly reports not enabled, without invented assessments.
+- [x] Test accessibility basics: keyboard operation, semantic labels, contrast, focus visibility, responsive overflow and dialogs.
 
-### API surface (proposed)
+### API surface (implemented core routes)
 
 ```http
 GET    /api/v1/cases
@@ -184,9 +194,15 @@ Create/import one synthetic alert
   → reopen the same saved case with its history intact
 ```
 
-- [ ] Entire workflow works in browser without database consoles or manual API calls.
-- [ ] Browser E2E test covers the vertical slice.
-- [ ] Invalid user inputs and conflicting edits yield clear recoverable errors.
+- [x] Entire workflow works in browser without database consoles or manual API calls.
+- [x] Browser E2E test covers the vertical slice, including Compose restart and reopening with retained notes/evidence/history on desktop and mobile.
+- [x] Invalid user inputs and conflicting edits yield clear recoverable errors. Two-tab browser tests prove draft retention and explicit reload/review before retrying a stale edit.
+
+Implementation choices: [ADR 0005](ADR/0005-phase-2-local-case-workspace.md).
+Current routes and contracts: [API.md](API.md).
+Observed checks and limits: [PHASE_2_STATUS.md](PHASE_2_STATUS.md).
+The implementation remains local-only and synthetic; hosted CI execution of
+the current changes is pending a push. Phase 3 ingestion is not implemented.
 
 **Checkpoint:** This is a usable standalone case manager. Do not introduce Ollama until this checkpoint is stable.
 

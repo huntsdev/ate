@@ -1,8 +1,13 @@
 # Phase 0 implementation and validation
 
-Status: Phase 0 source and local core Docker runtime validated. Hosted CI,
-fresh-clone execution, and optional Elastic-profile runtime remain unverified.
-Later phases have not been implemented.
+This is the historical Phase 0 closeout record. The user has since authorized
+Phases 1 and 2; current results are in [PHASE_2_STATUS.md](PHASE_2_STATUS.md).
+
+Status: Phase 0 baseline source, core Docker runtime, fresh-clone startup, and
+hosted CI verified as of 2026-10-28. Optional Elastic-profile runtime remains
+unverified and is not a required core exit criterion. At Phase 0 closeout,
+later phases had not been implemented. The configuration follow-up had local validation;
+it has not been pushed or run in hosted CI.
 
 ## Baseline and scope
 
@@ -81,10 +86,10 @@ reach the page even with core infrastructure absent.
 
 | Criterion | Evidence / remaining work |
 | --- | --- |
-| Fresh clone starts with documented commands | Local cold image build/startup passed from initially empty volumes; separate fresh-clone execution unrun |
+| Fresh clone starts with documented commands | Passed remote clone of `00c7bf2`, isolated project/new volumes, synthetic credentials, web/proxy health, migrations, worker, and restart persistence |
 | `/api/v1/health` and frontend load API data | Passed against native FastAPI/Vite and the actual Docker API/Nginx/browser stack |
 | Migration and persistence through down/up | Passed real migration, rerun, database persistence, cleanup, and post-restart worker smoke |
-| CI passes without GPU or external lab/providers | Workflow supplied; hosted execution unrun, no Git remote/CI run available |
+| CI passes without GPU or external lab/providers | Hosted API, web, and infrastructure jobs passed for `00c7bf2`; see dated verification below |
 | Stop preserves volumes; destructive reset separate | Passed actual down/up synthetic persistence check; no volumes deleted |
 
 ## Environmental limits and next verification
@@ -104,8 +109,9 @@ persistence scripts use the shared resolver. The existing local password was
 single-quoted to preserve its literal dollar sign; the password itself was not
 replaced. The template/runbook now demonstrate safe quoting.
 
-The core stack is running at `http://127.0.0.1:8080`; the migration service has
-exited successfully, and API, worker, web, PostgreSQL, and Redis are healthy.
+At the end of the original runtime check, the core stack ran at
+`http://127.0.0.1:8080`; the migration service exited successfully, and API,
+worker, web, PostgreSQL, and Redis were healthy.
 Optional Elastic/Kibana and inference were not enabled. The earlier temporary
 Compose configuration checks are separate from the engine-backed results above.
 
@@ -122,7 +128,50 @@ docker stats --no-stream
 .\scripts\stack.ps1 Stop -Elastic
 ```
 
-Hosted CI/fresh-clone execution and optional-profile startup still need their
-own results; no hosted CI pass is claimed. Resource ceilings in
+The initial validation did not include hosted CI or a separate fresh clone;
+those checks now have the dated results below. Optional-profile startup remains
+unverified. Resource ceilings in
 [ADR 0001](ADR/0001-phase-0-foundation.md) are limits; the idle snapshot above
 does not establish workload headroom. Phase 1 requires its own scope review.
+
+## Phase 0 closeout verification — 2026-10-28
+
+- Git remote is now `https://github.com/huntsdev/ate.git`. The GitHub Actions
+  [baseline run](https://github.com/huntsdev/ate/actions/runs/40444887595) for
+  `00c7bf2320bcb5c501f34ca8d60495f6ecbfb9c5` completed successfully. Each of
+  `api`, `web`, and `infrastructure` reports `success` through the GitHub API.
+- Cloned that remote commit into the ignored directory
+  `artifacts/phase0-fresh-clone-663e666cd761`. Used a generated synthetic
+  password, `COMPOSE_PROJECT_NAME=ate_clone_663e666cd761`, and host ports
+  18080/18000 to keep the check separate from the development deployment.
+- The documented `stack.ps1 Validate`, `Start`, and `Smoke` commands passed.
+  Both health/readiness routes returned 200 through the web proxy, and the web
+  HTML loaded successfully. `test-persistence.ps1` verified a synthetic record
+  across down/up, cleaned up its test database, and passed the real worker
+  smoke after restart. The clone project was stopped without deleting volumes.
+  This used a clean checkout and new volumes on the existing Docker host;
+  it does not claim validation on a newly installed Windows machine.
+- Native `ollama list` and the read-only `/api/tags` inventory confirm
+  `qwen3:8b` is installed, matching `.env`. No model generation, download,
+  container-to-host inference check, or GPU benchmark was performed.
+- [ADR 0003](ADR/0003-optional-provider-configuration.md) records support for
+  omitted/blank Elastic configuration. Updated the local `.env` placeholder
+  to blank without changing the database credentials or Ollama settings.
+- Current backend checks passed: 27 tests, Ruff lint/format, mypy (14 source
+  files), and OpenAPI drift validation. Tests cover blank/whitespace and
+  configured Elastic URLs plus invalid URL rejection. The existing upstream
+  TestClient deprecation warning remains. Core and dev+Elastic Compose
+  configuration validation passed; the optional services were not started.
+- Started the current workspace with `stack.ps1 Start -Dev` and the blank
+  Elastic URL. All five long-running services are healthy, the baseline
+  migration completed, and `stack.ps1 Smoke -Dev` passed the real database,
+  broker, and worker checks. `npm run smoke:live` passed with no intercepted
+  requests: health 200 and readiness 200, including desktop/mobile captures.
+  The development stack remains running at `http://127.0.0.1:8080` with source
+  reload enabled. Stop it with `stack.ps1 Stop -Dev`; named volumes persist.
+- Documentation validation passed: all 25 relative file links in README,
+  AGENTS, and docs resolve. `.env` remains ignored by Git.
+
+The successful hosted run covers the committed baseline, not this uncommitted
+follow-up. No push or new hosted run was performed. Phase 1 (domain tables,
+migrations, and auditability) is the next implementation scope to review.

@@ -10,7 +10,7 @@ from sentinelforge.main import create_app
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_health_contract_and_no_business_routes(settings):
+def test_health_contract_and_phase_boundaries(settings):
     async def ok():
         pass
 
@@ -20,11 +20,11 @@ def test_health_contract_and_no_business_routes(settings):
         response = client.get("/api/v1/health")
         assert response.status_code == 200
         assert response.json()["service"] == "ate"
-        assert set(client.get("/openapi.json").json()["paths"]) == {
-            "/api/v1/health",
-            "/api/v1/health/live",
-            "/api/v1/health/ready",
-        }
+        paths = set(client.get("/openapi.json").json()["paths"])
+        assert {"/api/v1/health", "/api/v1/cases", "/api/v1/alerts", "/api/v1/session"} <= paths
+        assert not any("triage" in path or "simulation" in path for path in paths)
+        headers = client.get("/openapi.json").json()["paths"]["/api/v1/cases"]["post"]["parameters"]
+        assert any(header["name"] == "X-ATE-CSRF" and header["required"] for header in headers)
 
 
 def test_synthetic_fixtures_are_deterministic_and_linked():

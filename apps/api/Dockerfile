@@ -7,6 +7,7 @@ COPY apps/api/pyproject.toml apps/api/uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 COPY apps/api/sentinelforge ./sentinelforge
 COPY apps/api/alembic.ini ./
+COPY tests/fixtures ./fixtures
 COPY apps/worker /worker
 RUN groupadd --gid 10001 ate && useradd --uid 10001 --gid ate --no-create-home ate
 USER ate

@@ -13,7 +13,7 @@ Probe = Callable[[], Awaitable[None]]
 class Health(BaseModel):
     status: Literal["alive"] = "alive"
     service: Literal["ate"] = "ate"
-    phase: Literal[0] = 0
+    phase: Literal[2] = 2
     optional_dependencies: dict[str, Literal["not_enabled"]] = {
         "elastic": "not_enabled",
         "ollama": "not_enabled",

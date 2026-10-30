@@ -1,6 +1,8 @@
 # Explicit opt-in: docker compose -f compose.yaml -f compose.dev.yaml up --build -d
 services:
   api:
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"
     command: [python, -m, uvicorn, sentinelforge.main:create_app, --factory, --host, 0.0.0.0, --port, "8000", --reload, --reload-dir, /app/sentinelforge, --no-access-log]
     volumes: [./apps/api/sentinelforge:/app/sentinelforge:ro]
   web:
@@ -13,6 +15,7 @@ services:
       - ./apps/web/src:/app/src:ro
       - ./apps/web/index.html:/app/index.html:ro
       - ./apps/web/vite.config.ts:/app/vite.config.ts:ro
+      - ./apps/web/public:/app/public:ro
   worker:
     volumes:
       - ./apps/api/sentinelforge:/app/sentinelforge:ro

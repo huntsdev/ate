@@ -7,6 +7,7 @@ from sentinelforge.core.config import ConfigurationError, Settings, get_settings
 def test_defaults_and_encoded_database_password(settings):
     assert settings.postgres_host == "postgres"
     assert settings.ollama_url.host == "host.docker.internal"
+    assert settings.elastic_url is None
     assert settings.readiness_timeout_seconds == 2
     changed = Settings(postgres_password="safe/@:password?#value")
     assert changed.database_url.password == "safe/@:password?#value"
@@ -21,6 +22,7 @@ def test_defaults_and_encoded_database_password(settings):
         {"readiness_timeout_seconds": 0},
         {"readiness_timeout_seconds": 100},
         {"ollama_url": "file:///tmp/model"},
+        {"elastic_url": "file:///tmp/alerts"},
         {"redis_url": "http://not-redis"},
         {"ollama_model": " "},
     ],
@@ -54,3 +56,14 @@ def test_ollama_is_configurable_and_never_required(settings, monkeypatch):
     custom = Settings()
     assert custom.ollama_url.port == 12000
     assert custom.ollama_model == "qwen-custom:test"
+
+
+@pytest.mark.parametrize("value", ["", " ", "http://elasticsearch:9200"])
+def test_elastic_environment_can_remain_unconfigured(settings, monkeypatch, value):
+    monkeypatch.setenv("ATE_ELASTIC_URL", value)
+    custom = Settings()
+    if value.strip():
+        assert custom.elastic_url is not None
+        assert custom.elastic_url.host == "elasticsearch"
+    else:
+        assert custom.elastic_url is None

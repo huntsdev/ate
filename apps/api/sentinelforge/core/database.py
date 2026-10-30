@@ -7,7 +7,7 @@ from sentinelforge.core.config import Settings
 
 
 class Base(DeclarativeBase):
-    """Empty metadata in Phase 0; no domain tables or automatic create_all."""
+    """Shared model metadata; schema changes are applied only through Alembic."""
 
 
 def create_engine(settings: Settings) -> AsyncEngine:

@@ -61,8 +61,23 @@ Do not implement the entire platform in one pass. Begin with Phase 0 only after 
 
 CURRENT IMPLEMENTATION BASELINE:
 - Follow docs/ARCHITECTURE.md and docs/ROADMAP.md, including their updated apps/ monorepo layout.
-- The user directed implementation to use docs/. Phase 0 only is authorized in this session.
+- The user directed implementation to use docs/ and explicitly authorized Phase 2 on 2026-10-28. Implement the local case-management API and analyst UI on Phase 1 persistence; Phase 3 ingestion and later integrations remain outside this scope.
 - ATÉ is the current product/UI name; SentinelForge remains the repository/design name.
 - Use modern, clean, cybersecurity-focused UI/UX with shadcn/ui components where applicable.
-- Record concrete Phase 0 choices in docs/ADR/; do not implement later-phase business workflows.
+- Record concrete implementation choices in docs/ADR/; do not implement workflows beyond the authorized phase.
 - Distinguish tests actually run from infrastructure checks requiring Docker Desktop.
+- Phase 0 baseline `00c7bf2` now has passing hosted CI and isolated fresh-clone
+  startup/persistence evidence; see `docs/PHASE_0_STATUS.md`. Phase 3 and later
+  require scope review. New uncommitted changes have separate local evidence.
+- Elastic configuration may be omitted or blank (ADR 0003). Native Ollama has
+  `qwen3:8b` installed; application inference remains deferred to Phase 4.
+- Phase 1 implements domain persistence, internal services and auditability;
+  follow `docs/DATA-MODEL.md` and ADR 0004. Actual checks are recorded in
+  `docs/PHASE_1_STATUS.md`.
+- API/worker use a restricted database login; only the migration container gets
+  owner credentials. Use `scripts/test-backend.ps1` for real PostgreSQL tests;
+  plain pytest skips integrations without `ATE_TEST_DATABASE_URL`.
+- Phase 2 implements the loopback single-user case API and a complete shadcn UI
+  redesign. Follow ADR 0005 and `docs/API.md`; use server-selected local actor
+  identity and expected-version writes. Do not widen access or add Phase 3+
+  provider workflows without authorization.

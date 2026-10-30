@@ -8,7 +8,7 @@ const healthy = {
 const live = {
   status: 'alive',
   service: 'ate',
-  phase: 0,
+  phase: 2,
   optional_dependencies: { elastic: 'not_enabled', ollama: 'not_enabled' },
 }
 
@@ -19,7 +19,7 @@ test('healthy foundation displays API data and remains accessible on both layout
   await page.route('**/api/v1/health/ready', (route) =>
     route.fulfill({ json: healthy }),
   )
-  await page.goto('/')
+  await page.goto('/system')
   await expect(page.getByText('Core services are ready')).toBeVisible()
   await expect(page.getByText('2 / 2', { exact: true })).toBeVisible()
   await expect(
@@ -56,7 +56,7 @@ test('dependency failure is visible and can recover with refresh', async ({
           },
     ),
   )
-  await page.goto('/')
+  await page.goto('/system')
   await expect(page.getByText('Core services need attention')).toBeVisible()
   await expect(page.getByText('1 / 2', { exact: true })).toBeVisible()
   await expect(page.getByText('Unavailable', { exact: true })).toBeVisible()
@@ -69,7 +69,7 @@ test('unreachable API shows an actionable state without invented dependency heal
   page,
 }) => {
   await page.route('**/api/**', (route) => route.abort())
-  await page.goto('/')
+  await page.goto('/system')
   await expect(page.getByText('API unreachable', { exact: true })).toBeVisible()
   await expect(page.getByText('— / 2', { exact: true })).toBeVisible()
   await expect(page.getByText('Unknown', { exact: true })).toHaveCount(2)
@@ -85,7 +85,7 @@ test('malformed readiness data is not presented as healthy', async ({
   await page.route('**/api/v1/health/ready', (route) =>
     route.fulfill({ json: { status: 'ready' } }),
   )
-  await page.goto('/')
+  await page.goto('/system')
   await expect(page.getByText('Core services need attention')).toBeVisible()
   await expect(page.getByText('— / 2', { exact: true })).toBeVisible()
 })

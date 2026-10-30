@@ -1,4 +1,4 @@
-# Phase 0 operating runbook
+# ATÉ operating runbook — through Phase 2
 
 ## Prerequisites and configuration
 
@@ -21,10 +21,10 @@ For host source checks, use uv 0.12.12 (managed Python 3.12.14) and Node.js
 and JavaScript packages. Do not update all dependencies implicitly during setup:
 use `uv sync --locked` and `npm.cmd ci`.
 
-Copy `.env.example` to `.env`, choose a local PostgreSQL password (at least
-12 characters), and keep the file out of source control. Compose reads `.env`
+Copy `.env.example` to `.env`, choose different owner/application PostgreSQL
+passwords (at least 12 characters each), and keep the file out of source control. Compose reads `.env`
 and passes selected settings to containers; it is not baked into images.
-Keep the single quotes around `ATE_POSTGRES_PASSWORD` when replacing its example
+Keep the single quotes around both password values when replacing their example
 value. Compose treats dollar signs in single-quoted values literally; unquoted
 or double-quoted passwords can trigger variable substitution. Database URLs are
 constructed with SQLAlchemy URL objects, not string concatenation.
@@ -33,6 +33,23 @@ constructed with SQLAlchemy URL objects, not string concatenation.
 never add them as `VITE_*` values. Changing an environment password does not
 change a password already stored in a PostgreSQL volume. Rotate it inside
 PostgreSQL and update `.env` together; do not delete data to rotate credentials.
+
+`ATE_POSTGRES_USER`/`ATE_POSTGRES_PASSWORD` belong to the owner/migration
+container. API and worker receive `ATE_POSTGRES_APP_USER` (default `ate_app`)
+and `ATE_POSTGRES_APP_PASSWORD` as their effective database credentials. The
+migration container provisions this restricted login on both new and existing
+volumes. The current workspace already has a generated application password;
+no user setup or owner-password change is required for the Phase 1 upgrade.
+Changing the application password and rerunning `stack.ps1 Migrate` applies
+that password to the role; recreate API/worker containers to pick it up.
+Reserve the configured application role for this project; bootstrap refuses
+privileged roles or roles with memberships.
+
+Leave `ATE_ELASTIC_URL=` blank until an Elastic endpoint is selected. Omitted
+and blank values are supported; a nonblank value must be an HTTP(S) URL.
+The optional synthetic profile's internal address is
+`http://elasticsearch:9200`. Neither configuring that URL nor starting the
+profile enables ingestion through Phase 2. See [ADR 0003](ADR/0003-optional-provider-configuration.md).
 
 ## Start, stop, and inspect
 
@@ -53,9 +70,15 @@ downloads can exceed that; inspect status/logs and retry once downloads finish.
 also preserving volumes. `Logs` shows bounded API/worker/web logs. Standard
 `docker compose logs postgres redis` inspects infrastructure separately.
 
-Add `-Dev` consistently to use the development override. It bind-mounts API,
+Add `-Dev` consistently, including to `test-persistence.ps1`, to use the development override. It bind-mounts API,
 worker, and web source; API/web reload source changes. Restart the worker after
 editing its tasks. Rebuild images after changing lockfiles or manifests.
+
+The container frontend uses polling for Windows source mounts. Vite preserves
+the browser Host header instead of forwarding its internal Docker hostname;
+the API accepts only loopback hosts. If changing the dev proxy configuration,
+restart `web` so the new proxy options are active. Nginx preserves the browser
+Host for API/docs requests too.
 
 Add `-Elastic` to start/stop optional Elasticsearch and Kibana. These are local,
 synthetic-only services with security disabled and loopback published ports.
@@ -83,14 +106,46 @@ docker stats --no-stream
 docker system df
 ```
 
-The `migrate` service applies Alembic before API startup. Phase 0's baseline
-creates only revision tracking, with no cases/alerts/embeddings tables. The
-smoke command reruns migrations twice, checks SQL and Redis connectivity,
+The `migrate` service applies Alembic and restricted-role provisioning before
+API/worker startup. Revision `0002_domain_persistence` adds the Phase 1 tables
+after the original empty baseline. The smoke command reruns bootstrap twice
+using the migration container, checks the runtime login/revision and Redis,
 checks all health routes, and verifies a real queued synthetic task result.
+API and worker cannot run schema migrations or change Alembic revision state.
+
+Phase 2 also provisions the server-owned `local-analyst` actor. No new schema
+revision is required for the HTTP/UI layer. Do not replace its reserved UUID or
+reactivate it by modifying browser requests. If the actor is missing/inactive,
+business routes fail safely with `local_actor_unavailable`; database bootstrap
+must resolve that state. This local mode does not implement multiuser sign-in.
+
+Seed synthetic data explicitly, using the restricted application login:
+
+```powershell
+docker compose exec -T api python -m sentinelforge.seed_demo
+.\scripts\test-backend.ps1
+```
+
+The seed creates two synthetic actors and one investigation with a linked alert,
+note, evidence snapshot and audit events. Rerunning it does not overwrite an
+existing investigation. Demo case data is never seeded on startup. The local
+analyst identity is provisioned separately by database bootstrap. Case HTTP
+routes and analyst screens are available; see [API.md](API.md) and
+[DATA-MODEL.md](DATA-MODEL.md).
+
+`test-backend.ps1` requires uv and Docker, starts a temporary PostgreSQL container
+using the pinned Compose image and a random loopback port, runs all backend
+tests, then stops/removes only that disposable container. It does not use app
+volumes or credentials. Alternatively, set `ATE_TEST_DATABASE_URL` to a
+disposable PostgreSQL admin URL and run pytest; each integration test creates
+and drops only its uniquely named `ate_test_<uuid>` database and test role.
+Without that variable, plain pytest explicitly skips the integration tests.
 
 The persistence test deliberately recreates local containers. It creates a
-uniquely named `ate_phase0_probe_<uuid>` database, stores one synthetic record,
-runs down/up without deleting volumes, verifies the record, and drops only
+uniquely named `ate_phase1_probe_<uuid>` database through the owner-only migration
+container, migrates it, and stores a complete synthetic case graph. It runs
+down/up without deleting volumes, verifies cases, alerts, notes/revisions,
+links, evidence/hash, assignment, disposition and audit events, then drops only
 that database. With `-Elastic`, it similarly creates/verifies/removes only a
 uniquely named synthetic index in the Compose Elastic instance. Do not run it
 against a deployment serving analysts. Cleanup failures print the exact token
@@ -102,12 +157,57 @@ same project name. Check `docker volume ls` and `docker compose config --volumes
 before any reset. Never use `docker compose config` output in a public report;
 the full form can expose interpolated secrets. Use `config --quiet` for checks.
 
+## Analyst workspace and browser validation
+
+Open `/` for the overview, `/cases` for the case queue, `/alerts` for the alert
+queue, and `/system` for health. The browser supports the complete synthetic
+investigation workflow. Case detail offers overview, linked alerts, evidence,
+notes and audit-history tabs. Closed cases must be reopened before editing.
+Source references/snapshots are plain untrusted data; HTTP(S) references open
+separately, and other reference schemes remain text.
+
+The server selects `local-analyst` as the audit actor. Assignment changes the
+owner, not the actor. Mutations require the local write token plus an allowed
+Origin; browser code manages them in memory. On API restart, reload the page or
+use the form's session-reload action, review the preserved draft and save again.
+After a version conflict, explicitly reload the latest case and review the draft.
+Nothing automatically retries a mutation or overwrites a newer case version.
+
+From `apps/web`, `npm.cmd test` runs the isolated browser suite without a live
+database. `npm.cmd run smoke:live` checks the actual system page read-only.
+The live suite below writes clearly marked synthetic records and restarts the
+stack. Use only the local synthetic deployment; do not run it while others are
+using the same Compose project. Set the mode to match the current stack:
+
+```powershell
+Set-Location apps/web
+$env:ATE_LIVE_ALLOW_RESTART = '1'
+$env:ATE_LIVE_DEV = '1' # use '0' for the production Nginx mode
+npm.cmd run test:live
+Remove-Item Env:ATE_LIVE_ALLOW_RESTART
+Remove-Item Env:ATE_LIVE_DEV
+Set-Location ../..
+```
+
+The suite uses UI controls to import/link/create, preserve evidence, revise a
+note, assign, resolve/close, restart, reload and reopen the same case with its
+history intact. It also verifies two-tab conflict/draft recovery on desktop and
+mobile. Restart tests are skipped without the explicit restart variable. Live
+traces are under ignored `apps/web/test-results-live`; UI captures are under
+ignored `artifacts/`. Synthetic acceptance records remain in the local database.
+CI runs this against its disposable production Compose deployment.
+
 ## Native Windows Ollama
 
-Ollama is installed and managed separately on Windows. Phase 0 only validates
+Ollama is installed and managed separately on Windows. Through Phase 2 the app only validates
 the configured URL and model string; no inference requests or model downloads
 occur. `ATE_OLLAMA_URL` defaults to `http://host.docker.internal:11434` and
 `ATE_OLLAMA_MODEL` is an unbenchmarked configurable Qwen placeholder.
+
+On 2026-10-28, `ollama list` and the native runtime's read-only model inventory
+confirmed that `qwen3:8b` is installed (5,225,388,164 bytes), matching this
+workspace's configuration. No inference or GPU benchmark was performed.
+Use `ollama list` to check an existing installation before downloading a model.
 
 To prepare the native runtime separately, download and install
 [Ollama for Windows](https://ollama.com/download/windows). Reopen PowerShell
@@ -183,13 +283,17 @@ is not supported by Celery. Host-only checks do not prove Docker operation.
   Docker documentation. Do not enable it to troubleshoot unrelated API issues.
 - Slow UI update: status polls every 30 seconds; Refresh status performs an
   immediate check. Failed responses clear dependency claims to Unknown.
-- Long-term telemetry retention, separate DB runtime privileges, backups and
-  restores are unfinished later-phase work. No real records should be stored yet.
+- The runtime login is now separate from the migration owner. Long-term telemetry
+  retention, automatic redaction, authentication, backups and tested restores
+  remain unfinished. Continue using synthetic data.
 
 ## Reset and backup warning
 
-Static fixture files have no mutable demo store in Phase 0; rerun tests to
-reuse them. Domain seeding/reset commands arrive after a domain schema exists.
+Static fixture files are immutable; the explicit seed above writes a persistent
+demo case in Phase 1. There is no case deletion/reset API. A nonempty domain
+migration downgrade is rejected to preserve history; downgrade/upgrade tests
+operate on disposable empty databases. Restore a backup or use a deliberately
+disposable deployment for a complete reset.
 
 Normal shutdown is safe for named volumes. A **separate destructive reset** is:
 

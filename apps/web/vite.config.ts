@@ -7,10 +7,17 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   server: {
+    watch: {
+      usePolling: process.env.API_PROXY_TARGET !== undefined,
+      interval: 500,
+    },
     proxy: Object.fromEntries(
       ['/api', '/docs', '/openapi.json'].map((path) => [
         path,
-        process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8000',
+        {
+          target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8000',
+          changeOrigin: false,
+        },
       ]),
     ),
   },

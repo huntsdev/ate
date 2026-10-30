@@ -24,6 +24,7 @@ package = false
 testpaths = ["tests"]
 asyncio_mode = "auto"
 pythonpath = [".", "../worker"]
+markers = ["integration: requires a disposable PostgreSQL admin URL via ATE_TEST_DATABASE_URL"]
 
 [tool.ruff]
 target-version = "py312"

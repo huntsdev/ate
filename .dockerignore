@@ -9,6 +9,7 @@
 **/.mypy_cache
 **/dist
 **/test-results
+**/test-results-live
 **/playwright-report
 **/*.log
 data

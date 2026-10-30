@@ -1,6 +1,7 @@
 # SentinelForge — System Architecture
 
-**Status:** Proposed architecture / engineering baseline  
+**Status:** Engineering baseline; Phase 2 implemented, later phases planned
+
 **Document owner:** Project maintainers  
 **Intended audience:** Codex, developers, reviewers, and future contributors  
 **Scope:** Standalone, self-hosted security operations, case management, local AI triage, and purple-team validation platform  
@@ -108,6 +109,7 @@ flowchart TB
 - Feature modules: SOC overview, alert queue, case detail/workspace, evidence timeline, AI triage review, historical library, detection lab, admin/integrations.
 - TanStack Query or equivalent for server state. React state for ephemeral UI; backend/database own authoritative state.
 - Route examples: `/cases`, `/cases/:caseId`, `/alerts`, `/investigations/:id`, `/detections`, `/simulations`, `/settings`.
+- Phase 2 implements `/`, `/cases`, `/cases/:id`, `/alerts`, `/alerts/:id`, and `/system` with React Router and a complete shadcn redesign; later route examples remain proposals. See [ADR 0005](ADR/0005-phase-2-local-case-workspace.md).
 - Never embed Elastic, Ollama, PostgreSQL, or Redis credentials in browser code. The browser calls only the backend.
 - Display provenance and status clearly: analyst-confirmed disposition vs. AI recommendation vs. simulated ground truth.
 
@@ -487,16 +489,21 @@ contract generation, and the frontend component system. The remaining items
 below stay subject to their phase review. See [Phase 0 status](PHASE_0_STATUS.md)
 for measured validation versus unverified deployment criteria.
 
+[ADR 0003](ADR/0003-optional-provider-configuration.md) makes the Elastic URL
+optional (omitted or blank) while retaining configurable native Ollama/Qwen
+settings. Neither provider is contacted by the application through Phase 2; their
+availability does not affect core readiness.
+
 Before implementation expands, create short ADRs for:
 
-1. **Background queue:** RQ vs. Celery and crash/retry behavior.
-2. **Frontend component system:** accessible UI library and router conventions.
-3. **Local authentication:** single-user local development approach and migration path to multiuser RBAC/OIDC.
-4. **Elastic compatibility:** tested version range, alert index aliases, source permissions, and schema normalization.
-5. **Model profile:** quantized Qwen model, context/window, Ollama settings, and observed RTX 4070 Ti benchmarks.
-6. **Embeddings:** embedding model selection, schema, eligibility for historical retrieval, and model migration.
-7. **Evidence policy:** redaction, snapshot size, retention and export controls.
-8. **Simulation isolation:** approved hosts/networks and executor authorization.
+1. **Domain persistence (adopted):** case ID allocation, transition/disposition rules, audit immutability, optimistic locking, and separate migration/runtime database privileges are implemented in [ADR 0004](ADR/0004-phase-1-domain-persistence.md) and [DATA-MODEL.md](DATA-MODEL.md). Actual validation is in [PHASE_1_STATUS.md](PHASE_1_STATUS.md).
+2. **Local access and routing (adopted):** Phase 2 uses a server-selected local analyst, loopback Host/Origin limits and write protection, plus React Router routes (ADR 0005). Multiuser authentication/RBAC/OIDC remains mandatory before widening access.
+3. **Elastic compatibility:** tested version range, alert index aliases, source permissions, and schema normalization (Phase 3).
+4. **Worker durability:** Celery crash/retry behavior, durable PostgreSQL job state, and idempotency (Phase 4).
+5. **Model profile:** quantized Qwen model, context/window, Ollama settings, and observed RTX 4070 Ti benchmarks (Phase 4).
+6. **Embeddings:** embedding model selection, schema, eligibility for historical retrieval, and model migration (Phase 5).
+7. **Evidence policy:** Phase 1 adopts bounded snapshots, verified hashes, sensitivity labels and retention without automatic deletion (ADR 0004). Automatic redaction, retention schedules and export controls remain open before real sensitive data.
+8. **Simulation isolation:** approved hosts/networks and executor authorization (Phase 6).
 
 Do not block the initial case-management vertical slice on decisions about Caldera, embeddings, or future integrations.
 

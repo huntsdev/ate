@@ -1,4 +1,4 @@
-name: Phase 0 checks
+name: ATÉ case management checks
 on: [push, pull_request]
 permissions:
   contents: read
@@ -6,6 +6,19 @@ permissions:
 jobs:
   api:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg17-trixie@sha256:7a7e9f22015b67edb4bef5c59daeebcd7e74bfa570df6ce60ae01237c8648a84
+        env:
+          POSTGRES_USER: ate_test
+          POSTGRES_PASSWORD: synthetic-ci-test-password
+          POSTGRES_DB: ate_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U ate_test -d ate_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      ATE_TEST_DATABASE_URL: postgresql://ate_test:synthetic-ci-test-password@127.0.0.1:5432/ate_test
     defaults:
       run:
         working-directory: apps/api
@@ -49,6 +62,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Configure synthetic local credentials
         run: cp .env.example .env
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26.8.1"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install live browser checks
+        working-directory: apps/web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
       - name: Validate core, development, and optional profile configurations
         run: |
           docker compose --profile elastic config --quiet
@@ -60,10 +83,17 @@ jobs:
           curl --fail http://127.0.0.1:8080/
           curl --fail http://127.0.0.1:8080/api/v1/health
           curl --fail http://127.0.0.1:8080/api/v1/health/ready
+          docker compose run --rm --no-deps migrate
+          docker compose run --rm --no-deps migrate
           docker compose exec -T api python -m sentinelforge.smoke
       - name: Prove persistence across container recreation
         shell: pwsh
         run: ./scripts/test-persistence.ps1
+      - name: Verify analyst workflow, restart persistence, and conflicts in browsers
+        working-directory: apps/web
+        env:
+          ATE_LIVE_ALLOW_RESTART: "1"
+        run: npm run test:live
       - name: Capture service status and bounded logs
         if: failure()
         run: |

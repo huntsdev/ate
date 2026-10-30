@@ -28,6 +28,10 @@ switch ($Action) {
     'Status' { Invoke-Compose @('ps', '--all') }
     'Logs' { Invoke-Compose @('logs', '--tail', '100', 'api', 'worker', 'web') }
     'Migrate' { Invoke-Compose @('run', '--rm', '--no-deps', 'migrate') }
-    'Smoke' { Invoke-Compose @('exec', '-T', 'api', 'python', '-m', 'sentinelforge.smoke') }
+    'Smoke' {
+        Invoke-Compose @('run', '--rm', '--no-deps', 'migrate')
+        Invoke-Compose @('run', '--rm', '--no-deps', 'migrate')
+        Invoke-Compose @('exec', '-T', 'api', 'python', '-m', 'sentinelforge.smoke')
+    }
     'Validate' { Invoke-Compose @('config', '--quiet') }
 }

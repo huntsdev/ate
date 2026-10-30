@@ -4,8 +4,8 @@ import asyncio
 import json
 import urllib.request
 
-from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from redis.asyncio import Redis
 from sqlalchemy import text
 
@@ -20,7 +20,11 @@ async def infrastructure() -> None:
     try:
         async with engine.connect() as connection:
             assert await connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "0001_empty_baseline"
+                ScriptDirectory.from_config(Config("alembic.ini")).get_current_head()
+            )
+            assert await connection.scalar(text("SELECT count(*) FROM cases")) is not None
+            assert not await connection.scalar(
+                text("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")
             )
         assert await redis.ping()
     finally:
@@ -29,11 +33,8 @@ async def infrastructure() -> None:
 
 
 def main() -> None:
-    stage = "migration"
+    stage = "database_and_broker"
     try:
-        command.upgrade(Config("alembic.ini"), "head")
-        command.upgrade(Config("alembic.ini"), "head")
-        stage = "database_and_broker"
         asyncio.run(infrastructure())
         stage = "api"
         for route in ("health", "health/live", "health/ready"):
@@ -53,7 +54,13 @@ def main() -> None:
             json.dumps(
                 {
                     "status": "passed",
-                    "checks": ["migration_rerun", "postgres", "redis", "api", "worker_task"],
+                    "checks": [
+                        "migration_head",
+                        "restricted_postgres",
+                        "redis",
+                        "api",
+                        "worker_task",
+                    ],
                 }
             )
         )

@@ -1,2 +1,2 @@
 External provider clients will implement application-owned interfaces here.
-Phase 0 performs no Elasticsearch or Ollama operations.
+Through Phase 2 the application performs no Elasticsearch or Ollama operations.

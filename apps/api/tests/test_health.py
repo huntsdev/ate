@@ -30,7 +30,6 @@ def test_readiness_with_only_required_dependencies(settings):
     checker = ReadinessChecker({"postgres": postgres, "redis": redis}, 0.1)
     with TestClient(create_app(settings, checker)) as client:
         response = client.get("/api/v1/health/ready")
-        assert client.get("/api/v1/cases").status_code == 404
     assert response.status_code == 200
     assert response.json() == {
         "status": "ready",
